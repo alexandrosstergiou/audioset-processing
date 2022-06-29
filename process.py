@@ -4,7 +4,8 @@
 # Aoife McDonagh
 
 import argparse
-import os
+import os, sys
+import csv
 import core.utils as utils
 
 
@@ -21,7 +22,7 @@ def find(args):
         print("Finished finding and sorting files for class: " + class_name)
 
 
-def download(args):
+def download(args, workers=8):
     """
     Function for downloading all examples in AudioSet containing labels for given classes
     :param args:
@@ -30,13 +31,13 @@ def download(args):
     print("Downloading classes from AudioSet.")
 
     for class_name in args.classes:
-        utils.download(class_name, args)
+        utils.download(class_name, args, workers)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('mode', type=str, choices=['find', 'download'])
-    parser.add_argument('-c', '--classes', nargs='+', type=str,
+    parser.add_argument('-c', '--classes', nargs='+', type=str, default=None,
                         help='list of classes to find in a given directory of audioset files')
     parser.add_argument('-b', '--blacklist', nargs='+', type=str,
                         help='list of classes which will exclude a clip from being downloaded')
@@ -62,6 +63,16 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    # Download the entire dataset
+    if args.classes is None:
+        classes_names = []
+        with open(args.label_file) as l_file:
+            reader = csv.DictReader(l_file, fieldnames=['index','mid','display_name'])
+            for row in reader:
+                if 'display_name' == row['display_name']:
+                    continue
+                classes_names.append(row['display_name'])
+        args.classes = classes_names
     if args.mode == 'find':
         if args.destination_dir is not None and not os.path.isdir(args.destination_dir):
             os.makedirs(args.destination_dir)
@@ -70,6 +81,4 @@ if __name__ == '__main__':
     elif args.mode == 'download':
         if args.destination_dir is not None and not os.path.isdir(args.destination_dir):
             os.makedirs(args.destination_dir)
-        download(args)
-
-
+        download(args, workers=8)

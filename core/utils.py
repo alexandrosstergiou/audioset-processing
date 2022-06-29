@@ -7,8 +7,11 @@
 #       - destination directory to store sorted audio files
 
 import csv
+import sys
 import os
 from shutil import copyfile
+from multiprocessing import Pool
+import tqdm
 
 # defaults
 DEFAULT_LABEL_FILE = '../data/class_labels_indices.csv'
@@ -31,7 +34,12 @@ def find(class_name, args):
     find_files(youtube_ids, args.audio_data_dir, dst_dir_path)  # Find all files in audio_data_dir which are in the list of YouTube IDs
 
 
-def download(class_name, args):
+def ffmpeg_download(row):
+    command = "ffmpeg -hide_banner -nostats -loglevel 0 -n -ss " + str(row[1]) + " -t 10 -i $(youtube-dl -f 'bestaudio' -g https://www.youtube.com/watch?v=" + str(row[0]) + ") -ar " + str(DEFAULT_FS) + " -- \"" + row[-1] + "/" + str(row[0]) + "_" + row[1]+ "_" + row[2] + ".wav\""
+    #print(command)
+    os.system(command)
+
+def download(class_name, args, workers=8):
     new_csv = create_csv(class_name, args)
     # construct path to destination dir
     dst_dir_root = args.destination_dir if args.destination_dir is not None else DEFAULT_DEST_DIR
@@ -43,15 +51,30 @@ def download(class_name, args):
         os.makedirs(dst_dir)
         print("dst_dir: " + dst_dir)
 
+
     with open(new_csv) as dataset:
         reader = csv.reader(dataset)
 
+        csv_list = list(reader)
+        for i,row in enumerate(csv_list):
+            new_row = row
+            new_row.append(dst_dir)
+            csv_list[i] = new_row
+
+        try:
+            with Pool(workers) as pool:
+                for _ in tqdm.tqdm(pool.imap_unordered(ffmpeg_download,csv_list), total=len(csv_list)):
+                    pass
+        except KeyboardInterrupt:
+            print("Caught KeyboardInterrupt, terminating")
+            pool.terminate()
+            pool.join()
+
         for row in reader:
             # print command for debugging
-            print("ffmpeg -ss " + str(row[1]) + " -t 10 -i $(youtube-dl -f 'bestaudio' -g https://www.youtube.com/watch?v=" +
-                       str(row[0]) + ") -ar " + str(DEFAULT_FS) + " -- \"" + dst_dir + "/" + str(row[0]) + "_" + row[1] + ".wav\"")
-            os.system(("ffmpeg -ss " + str(row[1]) + " -t 10 -i $(youtube-dl -f 'bestaudio' -g https://www.youtube.com/watch?v=" +
-                       str(row[0]) + ") -ar " + str(DEFAULT_FS) + " -- \"" + dst_dir + "/" + str(row[0]) + "_" + row[1] + ".wav\""))
+            command = "ffmpeg -ss " + str(row[1]) + " -t 10 -i $(youtube-dl -f 'bestaudio' -g https://www.youtube.com/watch?v=" + str(row[0]) + ") -ar " + str(DEFAULT_FS) + " -- \"" + dst_dir + "/" + str(row[0]) + "_" + row[1]+ "_" + row[2] + ".wav\""
+            print(command)
+            os.system(command)
 
 
 def create_csv(class_name, args):
